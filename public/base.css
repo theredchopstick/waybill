@@ -1,0 +1,199 @@
+/* Sahara Delivery — shared design system
+   Palette: deep night, sahara blue, sand, white, alert orange */
+@import url('https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@600;700&family=Archivo:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --kraft: #e8f4fd;
+  --carton: #f0f8ff;
+  --paper: #ffffff;
+  --ink: #0d1117;
+  --ink-soft: #4a5568;
+  --line: #c5d8ea;
+  --safety: #0ea5d8;
+  --safety-dark: #0b7fa8;
+  --tape: #0b7fa8;
+  --stamp: #0ea5d8;
+  --alert: #e8590c;
+  --violet: #6d28d9;
+  --radius: 6px;
+  --font-display: 'Saira Condensed', sans-serif;
+  --font-body: 'Archivo', sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+}
+
+* { box-sizing: border-box; margin: 0; }
+body {
+  font-family: var(--font-body);
+  background: var(--kraft);
+  color: var(--ink);
+  min-height: 100vh;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+/* Topbar */
+.topbar {
+  background: #0d1117;
+  color: #e8f4fd;
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 56px;
+  position: sticky; top: 0; z-index: 20;
+}
+.brand {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  display: flex; align-items: center; gap: 10px;
+  color: #ffffff;
+}
+.brand .tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 1px;
+  background: var(--safety);
+  color: #fff;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-weight: 500;
+}
+.topbar .who { font-size: 13px; opacity: .85; display: flex; align-items: center; gap: 12px; color: #e8f4fd; }
+.topbar button {
+  background: transparent; border: 1px solid rgba(232,244,253,.4);
+  color: #e8f4fd; padding: 5px 12px; border-radius: var(--radius);
+  font-family: var(--font-body); font-size: 13px; cursor: pointer;
+}
+.topbar button:hover { border-color: #e8f4fd; }
+
+.wrap { max-width: 1100px; margin: 0 auto; padding: 24px 20px 80px; }
+
+h1, h2, h3 {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  font-weight: 700;
+}
+h1 { font-size: 26px; margin-bottom: 4px; }
+h2 { font-size: 19px; margin: 28px 0 12px; }
+.sub { color: var(--ink-soft); font-size: 13px; margin-bottom: 20px; }
+
+/* Sahara card */
+.card {
+  background: var(--paper);
+  border: 1.5px solid var(--ink);
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: 3px 3px 0 rgba(40,35,26,.18);
+  margin-bottom: 14px;
+}
+.card .tear {
+  border: none;
+  border-top: 2px dashed var(--line);
+  margin: 12px -16px;
+}
+
+/* Stamp badges — the signature element */
+.stamp {
+  display: inline-block;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  padding: 2px 10px;
+  border: 2px solid currentColor;
+  border-radius: 4px;
+  transform: rotate(-2deg);
+  background: transparent;
+}
+.stamp.picking    { color: var(--safety-dark); }
+.stamp.packed     { color: var(--violet); }
+.stamp.assigned   { color: var(--tape); }
+.stamp.in_transit { color: var(--safety); }
+.stamp.delivered  { color: var(--stamp); }
+.stamp.exception  { color: var(--alert); background: #fde8e8; }
+
+.mono { font-family: var(--font-mono); font-size: 13px; }
+.ref { font-family: var(--font-mono); font-weight: 500; letter-spacing: .5px; }
+.muted { color: var(--ink-soft); font-size: 13px; }
+
+/* Buttons */
+.btn {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 14px;
+  padding: 9px 16px;
+  border-radius: var(--radius);
+  border: 1.5px solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+  box-shadow: 2px 2px 0 rgba(40,35,26,.25);
+  transition: transform .05s;
+}
+.btn:active { transform: translate(2px,2px); box-shadow: none; }
+.btn.primary { background: var(--safety); border-color: var(--safety-dark); color: #fff; }
+.btn.ghost { box-shadow: none; background: transparent; }
+.btn.danger { background: #fde8e8; border-color: var(--alert); color: var(--alert); }
+.btn.small { padding: 5px 10px; font-size: 13px; }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+
+/* Forms */
+label { display: block; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--ink-soft); margin: 12px 0 4px; }
+input, select, textarea {
+  width: 100%;
+  font-family: var(--font-body);
+  font-size: 15px;
+  padding: 9px 11px;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  color: var(--ink);
+}
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--safety); border-color: var(--safety); }
+
+/* Tables */
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { font-family: var(--font-display); text-transform: uppercase; letter-spacing: 1px; font-size: 12px; text-align: left; padding: 8px; border-bottom: 2px solid var(--ink); }
+td { padding: 9px 8px; border-bottom: 1px dashed var(--line); vertical-align: top; }
+
+/* Toast */
+#toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  background: var(--ink); color: var(--kraft);
+  padding: 11px 20px; border-radius: var(--radius);
+  font-size: 14px; opacity: 0; pointer-events: none;
+  transition: opacity .25s; z-index: 50; max-width: 90vw;
+}
+#toast.show { opacity: 1; }
+#toast.err { background: var(--alert); color: #fff; }
+
+/* Tabs */
+.tabs { display: flex; gap: 6px; margin-bottom: 18px; flex-wrap: wrap; }
+.tabs button {
+  font-family: var(--font-display); text-transform: uppercase; letter-spacing: 1.5px;
+  font-size: 14px; font-weight: 700; padding: 7px 16px;
+  background: transparent; border: 1.5px solid transparent; border-radius: var(--radius);
+  color: var(--ink-soft); cursor: pointer;
+}
+.tabs button.active { background: var(--paper); border-color: var(--ink); color: var(--ink); box-shadow: 2px 2px 0 rgba(40,35,26,.18); }
+
+.grid { display: grid; gap: 14px; }
+.grid.cols-2 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.grid.cols-4 { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+
+.statcard { text-align: center; padding: 18px 10px; }
+.statcard .big { font-family: var(--font-display); font-size: 38px; font-weight: 700; line-height: 1; }
+.statcard .label { font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--ink-soft); margin-top: 6px; }
+
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.spread { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+
+@media (max-width: 640px) {
+  .wrap { padding: 16px 12px 80px; }
+  h1 { font-size: 22px; }
+}
