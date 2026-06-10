@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sahara Delivery — Warehouse</title>
+<link rel="stylesheet" href="/assets/base.css">
+<style>
+  .board { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; align-items: start; }
+  .col-head { font-family: var(--font-display); text-transform: uppercase; letter-spacing: 1.5px; font-size: 14px; font-weight: 700; padding: 6px 2px; border-bottom: 2px solid var(--ink); margin-bottom: 10px; display: flex; justify-content: space-between; }
+  .col-head .count { font-family: var(--font-mono); font-size: 12px; color: var(--ink-soft); }
+  .jobcard { padding: 12px; margin-bottom: 10px; }
+  .jobcard .dest { font-weight: 600; margin: 4px 0 2px; }
+  dialog { background: var(--paper); border: 1.5px solid var(--ink); border-radius: var(--radius); padding: 22px; width: min(92vw, 440px); }
+  dialog::backdrop { background: rgba(40,35,26,.5); }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">Sahara <span class="tag">WAREHOUSE</span></div>
+    <div class="who"><span id="who"></span><button onclick="logout()">Clock out</button></div>
+  </div>
+  <div class="wrap">
+    <div class="tabs">
+      <button class="active" onclick="show('board',this)">Job board</button>
+      <button onclick="show('orders',this)">Orders</button>
+      <button onclick="show('log',this)">Activity log</button>
+    </div>
+
+    <!-- JOB BOARD -->
+    <section id="tab-board">
+      <div class="spread" style="margin-bottom:14px">
+        <div><h1>Floor board</h1><p class="sub" style="margin:0">Pick → pack → assign a driver → out the door.</p></div>
+      </div>
+      <div class="board" id="board"></div>
+    </section>
+
+    <!-- ORDERS -->
+    <section id="tab-orders" style="display:none">
+      <div class="spread" style="margin-bottom:14px">
+        <div><h1>Orders</h1><p class="sub" style="margin:0">Log incoming orders, then create a pick job to start work.</p></div>
+        <button class="btn primary" onclick="orderDialog.showModal()">+ New order</button>
+      </div>
+      <div class="card" style="padding:0;overflow-x:auto">
+        <table id="ordersTable">
+          <thead><tr><th>Ref</th><th>Customer</th><th>Destination</th><th>Items</th><th>Depot</th><th>Status</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- LOG -->
+    <section id="tab-log" style="display:none">
+      <h1>Activity log</h1>
+      <p class="sub">Everything that happened, newest first. The same events go to Discord.</p>
+      <div class="card" style="padding:0;overflow-x:auto">
+        <table><thead><tr><th>When</th><th>What</th><th>Who</th></tr></thead><tbody id="logBody"></tbody></table>
+      </div>
+    </section>
+  </div>
+
+  <!-- New order dialog -->
+  <dialog id="orderDialog">
+    <h2 style="margin-top:0">New order</h2>
+    <form id="orderForm">
+      <label>Customer (player name)</label><input id="oCustomer" required>
+      <label>Destination</label><input id="oDest" required placeholder="e.g. Sandy Shores garage">
+      <label>Items</label><textarea id="oItems" rows="2" required placeholder="e.g. 3x engine parts, 1x toolkit"></textarea>
+      <label>Priority</label>
+      <select id="oPriority"><option value="standard">Standard</option><option value="express">Express</option></select>
+      <label>Depot</label><select id="oWarehouse" required></select>
+      <div class="row" style="margin-top:18px;justify-content:flex-end">
+        <button type="button" class="btn" onclick="orderDialog.close()">Cancel</button>
+        <button type="submit" class="btn primary">Log order</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Reroute dialog -->
+  <dialog id="rerouteDialog">
+    <h2 style="margin-top:0">Reroute job</h2>
+    <p class="muted" id="rerouteJobLabel"></p>
+    <label>New depot</label><select id="rerouteDepot"></select>
+    <label>Reason (optional)</label>
+    <input id="rerouteNote" placeholder="e.g. sent to wrong depot, capacity issue...">
+    <div class="row" style="margin-top:18px;justify-content:flex-end">
+      <button class="btn" onclick="rerouteDialog.close()">Cancel</button>
+      <button class="btn primary" onclick="submitReroute()">Reroute &amp; notify player</button>
+    </div>
+  </dialog>
+
+  <!-- Assign driver dialog -->
+  <dialog id="assignDialog">
+    <h2 style="margin-top:0">Assign driver</h2>
+    <p class="muted" id="assignJobLabel"></p>
+    <label>Driver</label><select id="assignDriver"></select>
+    <div class="row" style="margin-top:18px;justify-content:flex-end">
+      <button class="btn" onclick="assignDialog.close()">Cancel</button>
+      <button class="btn primary" onclick="submitAssign()">Assign &amp; notify</button>
+    </div>
+  </dialog>
+
+<script src="/assets/app.js"></script>
+<script>
+  const me = requireRole('warehouse', 'admin');
+  document.getElementById('who').textContent = me.name;
+  let orders = [], jobs = [], warehouses = [], assignJobId = null;
+
+  function show(tab, btn) {
+    ['board','orders','log'].forEach(t => document.getElementById('tab-'+t).style.display = t === tab ? '' : 'none');
+    document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  }
+
+  async function load() {
+    try {
+      [orders, jobs, warehouses] = await Promise.all([API.get('/orders'), API.get('/jobs'), API.get('/warehouses')]);
+      renderBoard(); renderOrders(); renderWarehouses(); loadLog();
+    } catch (e) { toast(e.message, true); }
+  }
+
+  const COLS = [
+    ['picking',          'Picking'],
+    ['packed',           'Packed — needs driver'],
+    ['assigned',         'Assigned'],
+    ['in_transit',       'In transit'],
+    ['out_for_delivery', 'Out for delivery'],
+    ['attempted',        '🔔 Attempted'],
+    ['exception',        '⚠ Exceptions'],
+    ['lost',             '❌ Lost'],
+    ['returned',         '↩ Returned'],
+    ['rerouted',         '🔄 Rerouted'],
+  ];
+
+  function jobAction(j) {
+    if (j.status === 'picking')
+      return `<button class="btn small primary" onclick="advance(${j.id},'packed')">Mark packed</button>
+              <button class="btn small" onclick="openReroute(${j.id},'${esc(j.ref)}')">Reroute</button>`;
+    if (j.status === 'packed')
+      return `<button class="btn small primary" onclick="openAssign(${j.id},'${esc(j.ref)}')">Assign driver</button>
+              <button class="btn small" onclick="openReroute(${j.id},'${esc(j.ref)}')">Reroute</button>`;
+    if (j.status === 'assigned' || j.status === 'in_transit')
+      return `<button class="btn small" onclick="openReroute(${j.id},'${esc(j.ref)}')">Reroute</button>`;
+    if (j.status === 'attempted')
+      return `<div class="muted" style="margin:4px 0;font-size:12px">🔔 ${esc(j.notes || 'no details')}</div>
+              <button class="btn small primary" onclick="openAssign(${j.id},'${esc(j.ref)}')">Reassign driver</button>
+              <button class="btn small" onclick="advance(${j.id},'returned')">Return to depot</button>`;
+    if (j.status === 'exception')
+      return `<div class="muted" style="margin:4px 0;font-size:12px">⚠ ${esc(j.notes || 'no details')}</div>
+              <button class="btn small primary" onclick="advance(${j.id},'out_for_delivery')">Resume delivery</button>
+              <button class="btn small" onclick="advance(${j.id},'packed')">Back to depot</button>`;
+    if (j.status === 'lost')
+      return `<div class="muted" style="margin:4px 0;font-size:12px">❌ ${esc(j.notes || 'no details')}</div>
+              <button class="btn small danger" onclick="advance(${j.id},'returned')">Mark returned</button>`;
+    if (j.status === 'returned')
+      return `<button class="btn small primary" onclick="openAssign(${j.id},'${esc(j.ref)}')">Re-dispatch</button>`;
+    if (j.status === 'rerouted')
+      return `<div class="muted" style="margin:4px 0;font-size:12px">🔄 ${esc(j.notes || 'rerouted')}</div>
+              <button class="btn small primary" onclick="advance(${j.id},'picking')">Start picking at new depot</button>`;
+    return '';
+  }
+
+  function renderBoard() {
+    document.getElementById('board').innerHTML = COLS.map(([status, label]) => {
+      const col = jobs.filter(j => j.status === status);
+      return `<div>
+        <div class="col-head"><span>${label}</span><span class="count">${col.length}</span></div>
+        ${col.map(j => `
+          <div class="card jobcard">
+            <div class="spread"><span class="ref">${esc(j.ref)}</span><span class="mono muted">${esc(j.warehouse_code)}</span></div>
+            <div class="dest">${esc(j.destination)}</div>
+            <div class="muted">${esc(j.customer)}${j.driver_name ? ' · 🚚 ' + esc(j.driver_name) : ''}</div>
+            <div class="muted mono" style="margin:6px 0">${esc(j.items)}</div>
+            ${j.priority === 'express' ? stamp('in_transit').replace('In transit','Express') : ''}
+            <div style="margin-top:8px">${jobAction(j)}</div>
+          </div>`).join('') || '<p class="muted" style="padding:8px 2px">Empty</p>'}
+      </div>`;
+    }).join('');
+  }
+
+  function renderOrders() {
+    document.querySelector('#ordersTable tbody').innerHTML = orders.map(o => `
+      <tr>
+        <td class="ref">${esc(o.ref)}</td>
+        <td>${esc(o.customer)}</td>
+        <td>${esc(o.destination)}</td>
+        <td class="mono muted">${esc(o.items)}</td>
+        <td class="mono">${esc(o.warehouse_code)}</td>
+        <td>${esc(o.status)}${o.priority === 'express' ? ' · <b style="color:var(--safety)">express</b>' : ''}</td>
+        <td>${o.job_count === 0 && o.status === 'received'
+          ? `<button class="btn small primary" onclick="createJob(${o.id})">Start pick</button>`
+          : `<button class="btn small" onclick="copyTrack('${esc(o.ref)}')">Copy track link</button>`}</td>
+      </tr>`).join('') || '<tr><td colspan="7" class="muted">No orders yet — log the first one.</td></tr>';
+  }
+
+  function renderWarehouses() {
+    document.getElementById('oWarehouse').innerHTML =
+      warehouses.map(w => `<option value="${w.id}">${esc(w.code)} — ${esc(w.name)}</option>`).join('');
+  }
+
+  async function loadLog() {
+    const events = await API.get('/events');
+    document.getElementById('logBody').innerHTML = events.map(e => `
+      <tr><td class="mono muted" style="white-space:nowrap">${timeAgo(e.created_at)}</td>
+      <td>${esc(e.message)}</td><td class="muted">${esc(e.actor_name || 'system')}</td></tr>`).join('');
+  }
+
+  document.getElementById('orderForm').onsubmit = async (e) => {
+    e.preventDefault();
+    try {
+      await API.post('/orders', {
+        customer: oCustomer.value, destination: oDest.value, items: oItems.value,
+        priority: oPriority.value, warehouse_id: +oWarehouse.value,
+      });
+      orderDialog.close(); e.target.reset();
+      toast('Order logged'); load();
+    } catch (ex) { toast(ex.message, true); }
+  };
+
+  async function createJob(orderId) {
+    try { await API.post('/jobs', { order_id: orderId }); toast('Pick job created'); load(); }
+    catch (e) { toast(e.message, true); }
+  }
+
+  function copyTrack(ref) {
+    const url = `${location.origin}/track.html?ref=${ref}`;
+    navigator.clipboard?.writeText(url).then(
+      () => toast('Tracking link copied — send it to the player'),
+      () => toast(url, false)
+    );
+  }
+
+  async function advance(id, status) {
+    try { await API.patch(`/jobs/${id}/status`, { status }); toast('Updated'); load(); }
+    catch (e) { toast(e.message, true); }
+  }
+
+  async function openAssign(id, ref) {
+    assignJobId = id;
+    document.getElementById('assignJobLabel').textContent = 'Job ' + ref;
+    const drivers = await API.get('/drivers');
+    document.getElementById('assignDriver').innerHTML =
+      drivers.map(d => `<option value="${d.id}">${esc(d.display_name)} (${d.active_jobs} active)</option>`).join('')
+      || '<option disabled>No active drivers</option>';
+    assignDialog.showModal();
+  }
+
+  async function submitAssign() {
+    try {
+      await API.patch(`/jobs/${assignJobId}/assign`, { driver_id: +assignDriver.value });
+      assignDialog.close(); toast('Driver assigned — Discord pinged'); load();
+    } catch (e) { toast(e.message, true); }
+  }
+
+  let rerouteJobId = null;
+  async function openReroute(id, ref) {
+    rerouteJobId = id;
+    document.getElementById('rerouteJobLabel').textContent = 'Job ' + ref;
+    document.getElementById('rerouteNote').value = '';
+    document.getElementById('rerouteDepot').innerHTML =
+      warehouses.map(w => `<option value="${w.id}">${esc(w.code)} — ${esc(w.name)}</option>`).join('');
+    rerouteDialog.showModal();
+  }
+
+  async function submitReroute() {
+    const depotId = +rerouteDepot.value;
+    const note = rerouteNote.value.trim();
+    try {
+      await API.patch(`/jobs/${rerouteJobId}/reroute`, { warehouse_id: depotId, note: note || undefined });
+      rerouteDialog.close(); toast('Job rerouted — player notified'); load();
+    } catch (e) { toast(e.message, true); }
+  }
+
+  load();
+  setInterval(load, 15000);
+</script>
+</body>
+</html>

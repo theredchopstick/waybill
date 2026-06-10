@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Track your order — Sahara Delivery</title>
+<link rel="stylesheet" href="/assets/base.css">
+<style>
+  body { background: var(--carton);
+    background-image: repeating-linear-gradient(45deg, transparent, transparent 34px, rgba(40,35,26,.025) 34px, rgba(40,35,26,.025) 36px); }
+  .wrap { max-width: 520px; }
+  .hero { text-align: center; padding: 28px 0 8px; }
+  .hero .logo { font-family: var(--font-display); font-size: 30px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; }
+  .hero .logo small { display: block; font-family: var(--font-mono); font-size: 11px; letter-spacing: 2px; color: var(--safety); margin-top: 2px; }
+  .lookup { display: flex; gap: 8px; margin-top: 6px; }
+  .lookup input { font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 1px; }
+  /* Progress bar */
+  .progress-track { height: 6px; background: var(--line); border-radius: 3px; margin: 14px 0 4px; overflow: hidden; }
+  .progress-fill { height: 100%; border-radius: 3px; background: var(--safety); transition: width .4s ease; }
+  .progress-fill.done { background: var(--stamp); }
+  .progress-fill.problem { background: var(--alert); }
+  .stage-labels { display: flex; justify-content: space-between; margin-bottom: 14px; }
+  .stage-labels span { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--ink-soft); }
+  /* Status banner */
+  .status-banner { border-radius: var(--radius); padding: 12px 14px; margin-bottom: 14px; font-size: 14px; border: 1.5px solid; }
+  .status-banner.ok      { background: #eaf3de; border-color: var(--stamp); color: #1a4a28; }
+  .status-banner.moving  { background: #fff3e0; border-color: var(--safety); color: var(--safety-dark); }
+  .status-banner.problem { background: #fde8e8; border-color: var(--alert); color: var(--alert); }
+  .status-banner.info    { background: #e6f1fb; border-color: var(--tape); color: #0c447c; }
+  .status-banner .headline { font-family: var(--font-display); font-size: 16px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; display: block; margin-bottom: 3px; }
+  /* Order meta */
+  .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
+  .meta-cell { background: var(--carton); border-radius: var(--radius); padding: 8px 10px; }
+  .meta-cell .mlabel { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--ink-soft); margin-bottom: 2px; }
+  .meta-cell .mval { font-size: 13px; font-weight: 500; }
+  .meta-cell.full { grid-column: 1 / -1; }
+  /* Event feed */
+  .feed { list-style: none; padding: 0; }
+  .feed-item { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px dashed var(--line); }
+  .feed-item:last-child { border-bottom: none; }
+  .feed-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--line); flex-shrink: 0; margin-top: 5px; }
+  .feed-dot.highlight { background: var(--safety); }
+  .feed-dot.done { background: var(--stamp); }
+  .feed-dot.problem { background: var(--alert); }
+  .feed-label { font-weight: 600; font-size: 14px; }
+  .feed-note { font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
+  .feed-time { font-size: 11px; color: var(--ink-soft); font-family: var(--font-mono); white-space: nowrap; }
+  .depot-tag { font-family: var(--font-mono); font-size: 11px; color: var(--tape); background: #e6f1fb; padding: 2px 7px; border-radius: 3px; }
+  .barcode { margin-top: 14px; height: 22px; background: repeating-linear-gradient(90deg, var(--ink) 0 2px, transparent 2px 5px, var(--ink) 5px 6px, transparent 6px 10px); opacity: .5; }
+  #result { display: none; }
+  .err-msg { text-align: center; color: var(--ink-soft); padding: 24px 10px; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <div class="logo">Sahara<small>ORDER TRACKING</small></div>
+    </div>
+
+    <div class="card">
+      <label for="ref">Enter your order code</label>
+      <div class="lookup">
+        <input id="ref" placeholder="ORD-XXXXXX" autocomplete="off" spellcheck="false">
+        <button class="btn primary" onclick="track()">Track</button>
+      </div>
+      <p class="muted" style="margin-top:8px">Your code looks like <span class="mono">ORD-AB3CD9</span> — you get it the moment you place an order. <a href="/order.html">Place a new order →</a></p>
+    </div>
+
+    <div class="card" id="result">
+
+      <!-- Header -->
+      <div class="spread">
+        <div>
+          <h2 style="margin:0">Order <span class="ref" id="rRef"></span></h2>
+          <p class="muted" id="rMeta" style="margin:2px 0 0"></p>
+        </div>
+        <span class="stamp" id="rStamp"></span>
+      </div>
+
+      <!-- Progress bar -->
+      <div class="progress-track"><div class="progress-fill" id="rProgress" style="width:0%"></div></div>
+      <div class="stage-labels">
+        <span>Received</span><span>Preparing</span><span>In transit</span><span>Delivered</span>
+      </div>
+
+      <!-- Status banner -->
+      <div class="status-banner" id="rBanner">
+        <span class="headline" id="rBannerTitle"></span>
+        <span id="rBannerBody"></span>
+      </div>
+
+      <!-- Order details grid -->
+      <div class="meta-grid">
+        <div class="meta-cell full">
+          <div class="mlabel">Items</div>
+          <div class="mval" id="rItems"></div>
+        </div>
+        <div class="meta-cell">
+          <div class="mlabel">Delivering to</div>
+          <div class="mval" id="rDest"></div>
+        </div>
+        <div class="meta-cell">
+          <div class="mlabel">Handling depot</div>
+          <div class="mval" id="rDepot"></div>
+        </div>
+        <div class="meta-cell">
+          <div class="mlabel">Priority</div>
+          <div class="mval" id="rPriority"></div>
+        </div>
+        <div class="meta-cell">
+          <div class="mlabel">Order placed</div>
+          <div class="mval" id="rPlaced"></div>
+        </div>
+      </div>
+
+      <hr class="tear">
+
+      <!-- Event feed -->
+      <h2 style="margin:0 0 10px">Updates</h2>
+      <ul class="feed" id="rFeed"></ul>
+
+      <div class="barcode" aria-hidden="true"></div>
+    </div>
+
+    <div class="card" id="errCard" style="display:none">
+      <div class="err-msg" id="errText"></div>
+    </div>
+  </div>
+
+<script src="/assets/app.js"></script>
+<script>
+  const STAGE_PROGRESS = { received: 5, preparing: 28, out: 70, delivered: 100, rerouted: 20, attempted: 70, delayed: 70, lost: 70, returned: 20 };
+
+  const STAGE_BANNER = {
+    received:  { cls: 'info',    title: 'Order received',        body: o => `We've got it — your order is in the queue at ${o.depot || 'our depot'}.` },
+    preparing: { cls: 'info',    title: 'Preparing your order',  body: o => `Staff are picking and packing your items at ${o.depot || 'the depot'}.` },
+    out:       { cls: 'moving',  title: 'On the way',            body: o => `Your order is heading to ${o.destination}.` },
+    delivered: { cls: 'ok',      title: 'Delivered ✓',           body: o => `Your order has arrived at ${o.destination}. Enjoy!` },
+    rerouted:  { cls: 'info',    title: 'Order rerouted',        body: o => `Your order has been transferred to ${o.depot || 'a different depot'} and will continue from there.` },
+    attempted: { cls: 'problem', title: 'Delivery attempted',    body: o => `Your driver couldn't complete the delivery. Dispatch is arranging another attempt to ${o.destination}.` },
+    delayed:   { cls: 'problem', title: 'Delivery delayed',      body: o => `There's a hold-up on your order. We're working on it.` },
+    lost:      { cls: 'problem', title: 'Item lost in transit',  body: o => `We're sorry — your order can't be located. Please contact staff with your order code.` },
+    returned:  { cls: 'problem', title: 'Returned to depot',     body: o => `Your order has been returned to ${o.depot || 'the depot'}. Contact staff to rearrange delivery.` },
+  };
+
+  const STAMP_CLASS = { received:'packed', preparing:'picking', out:'in_transit', delivered:'delivered', rerouted:'assigned', attempted:'exception', delayed:'exception', lost:'exception', returned:'packed' };
+  const STAMP_LABEL = { received:'Received', preparing:'Preparing', out:'Out for delivery', delivered:'Delivered', rerouted:'Rerouted', attempted:'Attempted', delayed:'Delayed', lost:'Lost', returned:'Returned' };
+
+  const PROBLEM_EVENTS = new Set(['job_exception','job_attempted','job_lost','job_returned','job_rerouted']);
+  const DONE_EVENTS    = new Set(['job_delivered']);
+
+  function fmtDate(iso) {
+    const d = new Date(iso + (iso.includes('Z') || iso.includes('+') ? '' : 'Z'));
+    return d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  }
+  function fmtTime(iso) {
+    const d = new Date(iso + (iso.includes('Z') || iso.includes('+') ? '' : 'Z'));
+    return d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  }
+
+  async function track() {
+    const ref = document.getElementById('ref').value.trim();
+    if (!ref) return;
+    document.getElementById('result').style.display = 'none';
+    document.getElementById('errCard').style.display = 'none';
+    try {
+      const o = await fetch('/api/track/' + encodeURIComponent(ref)).then(r => r.json().then(d => {
+        if (!r.ok) throw new Error(d.error || 'Not found'); return d;
+      }));
+      render(o);
+    } catch (e) {
+      document.getElementById('errText').textContent = e.message;
+      document.getElementById('errCard').style.display = 'block';
+    }
+  }
+
+  function render(o) {
+    const b = STAGE_BANNER[o.stage] || STAGE_BANNER.delayed;
+    const progress = STAGE_PROGRESS[o.stage] ?? 10;
+    const isProb = ['attempted','delayed','lost','returned'].includes(o.stage);
+
+    // Header
+    document.getElementById('rRef').textContent = o.ref;
+    document.getElementById('rMeta').textContent = o.customer;
+
+    // Stamp
+    const stamp = document.getElementById('rStamp');
+    stamp.className = 'stamp ' + (STAMP_CLASS[o.stage] || 'packed');
+    stamp.textContent = STAMP_LABEL[o.stage] || o.stage;
+
+    // Progress bar
+    const fill = document.getElementById('rProgress');
+    fill.style.width = progress + '%';
+    fill.className = 'progress-fill' + (o.stage === 'delivered' ? ' done' : isProb ? ' problem' : '');
+
+    // Status banner
+    const banner = document.getElementById('rBanner');
+    banner.className = 'status-banner ' + b.cls;
+    document.getElementById('rBannerTitle').textContent = b.title;
+    document.getElementById('rBannerBody').textContent =
+      (o.statusNote && o.stage !== 'rerouted') ? o.statusNote : b.body(o);
+
+    // Meta grid
+    document.getElementById('rItems').textContent = o.items;
+    document.getElementById('rDest').textContent = o.destination;
+    document.getElementById('rDepot').textContent = o.depot || '—';
+    document.getElementById('rPriority').innerHTML = o.priority === 'express'
+      ? '<span class="stamp in_transit" style="transform:none;font-size:11px">Express</span>'
+      : 'Standard';
+    document.getElementById('rPlaced').textContent = fmtDate(o.placed_at);
+
+    // Event feed
+    const feed = document.getElementById('rFeed');
+    if (!o.events || !o.events.length) {
+      feed.innerHTML = '<li class="feed-item"><div class="feed-dot"></div><div><div class="feed-label muted">No updates yet</div></div></li>';
+    } else {
+      // Newest first
+      const sorted = [...o.events].reverse();
+      feed.innerHTML = sorted.map((e, i) => {
+        const isLatest = i === 0;
+        const isProb = PROBLEM_EVENTS.has(e.type);
+        const isDone = DONE_EVENTS.has(e.type);
+        const dotCls = isDone ? 'done' : isProb ? 'problem' : isLatest ? 'highlight' : '';
+        return `<li class="feed-item">
+          <div class="feed-dot ${dotCls}"></div>
+          <div style="flex:1">
+            <div class="spread">
+              <span class="feed-label">${esc(e.label)}</span>
+              <span class="feed-time">${fmtTime(e.at)}</span>
+            </div>
+            ${e.note ? `<div class="feed-note">${esc(e.note)}</div>` : ''}
+          </div>
+        </li>`;
+      }).join('');
+    }
+
+    document.getElementById('result').style.display = 'block';
+  }
+
+  document.getElementById('ref').addEventListener('keydown', e => { if (e.key === 'Enter') track(); });
+  const pre = new URLSearchParams(location.search).get('ref');
+  if (pre) { document.getElementById('ref').value = pre; track(); }
+</script>
+</body>
+</html>

@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sahara Delivery — Driver</title>
+<link rel="stylesheet" href="/assets/base.css">
+<style>
+  /* Night cab variant */
+  body { background: #0d1117; color: #e8f4fd; }
+  .wrap { max-width: 560px; }
+  .card { background: #161b22; border-color: #30363d; box-shadow: 3px 3px 0 rgba(0,0,0,.4); color: #e8f4fd; }
+  .card .tear { border-top-color: #30363d; }
+  .muted { color: #8b9ab0; }
+  h1 { color: #e8f4fd; }
+  .sub { color: #8b9ab0; }
+  .dest { font-size: 18px; font-weight: 600; margin: 2px 0 4px; }
+  .bigbtn { width: 100%; padding: 16px; font-size: 16px; margin-top: 12px; }
+  .btn { background: #161b22; color: #e8f4fd; border-color: #30363d; box-shadow: 2px 2px 0 rgba(0,0,0,.4); }
+  .btn.primary { background: var(--safety); border-color: var(--safety-dark); color: #fff; }
+  .btn.danger { background: #3a1a10; border-color: #e8590c; color: #f5b89a; }
+  .stamp.in_transit { color: #5dc8f0; }
+  .stamp.assigned { color: #5dc8f0; }
+  .stamp.delivered { color: #7fd1a0; }
+  .stamp.exception { color: #f08c8c; background: #3a2020; }
+  .stamp.out_for_delivery { color: #5dc8f0; }
+  .stamp.attempted { color: #f5b89a; }
+  .empty { text-align: center; padding: 48px 16px; color: #8b9ab0; }
+  .empty .big-icon { font-size: 44px; margin-bottom: 10px; }
+  .filterrow { display: flex; gap: 8px; margin-bottom: 16px; }
+  .filterrow button { flex: 1; font-family: var(--font-display); text-transform: uppercase; letter-spacing: 1px; font-size: 13px; font-weight: 700; padding: 9px; background: transparent; border: 1.5px solid #30363d; border-radius: var(--radius); color: #8b9ab0; cursor: pointer; }
+  .filterrow button.active { border-color: var(--safety); color: var(--safety); }
+  textarea { background: #0d1117; border-color: #30363d; color: #e8f4fd; }
+  dialog { background: #161b22; color: #e8f4fd; border: 1.5px solid #30363d; border-radius: var(--radius); padding: 20px; width: min(92vw, 420px); }
+  dialog::backdrop { background: rgba(0,0,0,.7); }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">Sahara <span class="tag">DRIVER</span></div>
+    <div class="who"><span id="who"></span><button onclick="logout()">Clock out</button></div>
+  </div>
+  <div class="wrap">
+    <h1>My runs</h1>
+    <p class="sub">Tap a job to update its status. Dispatch sees every change instantly.</p>
+    <div class="filterrow">
+      <button class="active" data-f="open" onclick="setFilter('open',this)">Open</button>
+      <button data-f="done" onclick="setFilter('done',this)">Completed</button>
+    </div>
+    <div id="list"></div>
+  </div>
+
+  <dialog id="excDialog">
+    <h2 style="margin-top:0" id="excTitle">Flag issue</h2>
+    <p class="muted" id="excHint">What's blocking this delivery? Dispatch gets pinged on Discord.</p>
+    <textarea id="excNote" rows="3" placeholder="Give a short description..."></textarea>
+    <div class="row" style="margin-top:14px;justify-content:flex-end">
+      <button class="btn" onclick="excDialog.close()">Cancel</button>
+      <button class="btn danger" id="excSubmit" onclick="submitFlag()">Submit</button>
+    </div>
+  </dialog>
+
+<script src="/assets/app.js"></script>
+<script>
+  const me = requireRole('driver');
+  document.getElementById('who').textContent = me.name;
+  let jobs = [], filter = 'open', excJobId = null, excStatus = null;
+
+  const FLAG_META = {
+    exception: { title: 'Flag issue',          hint: 'What\'s blocking this delivery?',                placeholder: 'e.g. road blocked, wrong address...', required: false },
+    attempted: { title: 'Couldn\'t deliver',   hint: 'What prevented the delivery?',                  placeholder: 'e.g. customer not at location, gate locked...', required: true },
+    lost:      { title: 'Report item lost',     hint: 'Describe what happened. Dispatch will be alerted immediately.', placeholder: 'e.g. dropped during transit, stolen from vehicle...', required: true },
+  };
+
+  function setFilter(f, btn) {
+    filter = f;
+    document.querySelectorAll('.filterrow button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    render();
+  }
+
+  async function load() {
+    try { jobs = await API.get('/jobs'); render(); }
+    catch (e) { toast(e.message, true); }
+  }
+
+  function actionFor(j) {
+    if (j.status === 'assigned')
+      return `<button class="btn primary bigbtn" onclick="advance(${j.id},'in_transit')">▶ Start run</button>`;
+    if (j.status === 'in_transit')
+      return `<button class="btn primary bigbtn" onclick="advance(${j.id},'out_for_delivery')">📍 Mark out for delivery</button>
+              <button class="btn danger bigbtn" onclick="openFlag(${j.id},'exception')">⚠ Flag issue</button>`;
+    if (j.status === 'out_for_delivery')
+      return `<button class="btn primary bigbtn" onclick="advance(${j.id},'delivered')">✓ Mark delivered</button>
+              <button class="btn bigbtn" style="background:var(--violet);border-color:#4c1d95;color:#fff" onclick="openFlag(${j.id},'attempted')">🔔 Couldn't deliver</button>
+              <button class="btn danger bigbtn" onclick="openFlag(${j.id},'lost')">❌ Item lost</button>
+              <button class="btn danger bigbtn" onclick="openFlag(${j.id},'exception')">⚠ Flag issue</button>`;
+    if (j.status === 'attempted')
+      return `<p class="muted" style="margin-top:10px">🔔 Attempted — ${esc(j.notes || 'no details')}. Dispatch will rearrange.</p>`;
+    if (j.status === 'exception')
+      return `<p class="muted" style="margin-top:10px">⚠ ${esc(j.notes || 'issue flagged')} — waiting on dispatch</p>`;
+    if (j.status === 'lost')
+      return `<p class="muted" style="margin-top:10px">❌ Reported lost — ${esc(j.notes || 'no details')}</p>`;
+    return '';
+  }
+
+  function render() {
+    const open = ['assigned', 'in_transit', 'out_for_delivery', 'attempted', 'exception', 'lost'];
+    const shown = jobs.filter(j => filter === 'open' ? open.includes(j.status) : ['delivered','returned'].includes(j.status));
+    const list = document.getElementById('list');
+    if (!shown.length) {
+      list.innerHTML = `<div class="empty"><div class="big-icon">🚚</div>${filter === 'open' ? 'No runs assigned right now.<br>Dispatch will load you up soon.' : 'No completed runs yet.'}</div>`;
+      return;
+    }
+    list.innerHTML = shown.map(j => `
+      <div class="card">
+        <div class="spread">
+          <span class="ref">${esc(j.ref)}</span>
+          ${stamp(j.status)}
+        </div>
+        <div class="dest">📍 ${esc(j.destination)}</div>
+        <div class="muted">${esc(j.customer)} · from ${esc(j.warehouse_name)} (${esc(j.warehouse_code)})</div>
+        <hr class="tear">
+        <div class="mono muted">📦 ${esc(j.items)}</div>
+        ${j.priority === 'express' ? '<div style="margin-top:8px"><span class="stamp in_transit">Express</span></div>' : ''}
+        ${actionFor(j)}
+        <div class="muted" style="margin-top:10px;font-size:12px">Updated ${timeAgo(j.updated_at)}</div>
+      </div>
+    `).join('');
+  }
+
+  async function advance(id, status) {
+    try {
+      await API.patch(`/jobs/${id}/status`, { status });
+      toast(status === 'delivered' ? 'Delivered — nice work 🎉' : 'Run started');
+      load();
+    } catch (e) { toast(e.message, true); }
+  }
+
+  function openFlag(id, status) {
+    excJobId = id; excStatus = status;
+    const m = FLAG_META[status] || FLAG_META.exception;
+    document.getElementById('excTitle').textContent = m.title;
+    document.getElementById('excHint').textContent = m.hint;
+    document.getElementById('excNote').placeholder = m.placeholder;
+    document.getElementById('excNote').value = '';
+    excDialog.showModal();
+  }
+
+  async function submitFlag() {
+    const note = document.getElementById('excNote').value.trim();
+    const m = FLAG_META[excStatus] || FLAG_META.exception;
+    if (m.required && !note) return toast('Please add a short description first', true);
+    try {
+      await API.patch(`/jobs/${excJobId}/status`, { status: excStatus, note });
+      excDialog.close();
+      const msgs = { exception: 'Issue flagged — dispatch notified', attempted: 'Logged — dispatch will rearrange', lost: 'Reported lost — dispatch alerted' };
+      toast(msgs[excStatus] || 'Updated');
+      load();
+    } catch (e) { toast(e.message, true); }
+  }
+
+  load();
+  setInterval(load, 15000);
+</script>
+</body>
+</html>

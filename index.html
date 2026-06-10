@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sahara Delivery — Sign in</title>
+<link rel="stylesheet" href="/assets/base.css">
+<style>
+  body { display: flex; align-items: center; justify-content: center; padding: 20px;
+    background: #0d1117; }
+  .login-card { width: 100%; max-width: 380px; padding: 28px; background: #161b22; border-color: #30363d; }
+  .logo { font-family: var(--font-display); font-size: 34px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; color: #ffffff; }
+  .logo small { display: block; font-family: var(--font-mono); font-size: 11px; letter-spacing: 2px; color: var(--safety); font-weight: 500; margin-top: 2px; }
+  label { color: #8b9ab0; }
+  input { background: #0d1117; border-color: #30363d; color: #e8f4fd; }
+  input:focus { outline-color: var(--safety); border-color: var(--safety); }
+  .err-box { background: #3a1a10; border: 1.5px solid #e8590c; color: #f5b89a; border-radius: var(--radius); padding: 9px 12px; font-size: 13px; margin-top: 14px; display: none; }
+  .barcode { margin-top: 20px; height: 28px; background: repeating-linear-gradient(90deg, #30363d 0 2px, transparent 2px 5px, #30363d 5px 6px, transparent 6px 10px); opacity: .7; }
+  .card .tear { border-top-color: #30363d; }
+</style>
+</head>
+<body>
+  <div class="card login-card">
+    <div class="logo">Sahara<small>DELIVERY OPERATIONS</small></div>
+    <hr class="tear">
+    <form id="f">
+      <label for="u">Operator ID</label>
+      <input id="u" autocomplete="username" required autofocus>
+      <label for="p">Passcode</label>
+      <input id="p" type="password" autocomplete="current-password" required>
+      <div class="err-box" id="err"></div>
+      <button class="btn primary" style="width:100%;margin-top:18px" type="submit">Clock in</button>
+    </form>
+    <div class="barcode" aria-hidden="true"></div>
+  </div>
+<script src="/assets/app.js"></script>
+<script>
+  const u = API.user();
+  if (u) location.href = { driver: '/driver.html', warehouse: '/warehouse.html', admin: '/admin.html' }[u.role] || '/';
+
+  document.getElementById('f').onsubmit = async (e) => {
+    e.preventDefault();
+    const err = document.getElementById('err');
+    err.style.display = 'none';
+    try {
+      const data = await API.post('/auth/login', {
+        username: document.getElementById('u').value,
+        password: document.getElementById('p').value,
+      });
+      localStorage.setItem('wb_token', data.token);
+      localStorage.setItem('wb_user', JSON.stringify(data.user));
+      location.href = { driver: '/driver.html', warehouse: '/warehouse.html', admin: '/admin.html' }[data.user.role];
+    } catch (ex) {
+      err.textContent = ex.message;
+      err.style.display = 'block';
+    }
+  };
+</script>
+</body>
+</html>

@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sahara Delivery — Admin</title>
+<link rel="stylesheet" href="/assets/base.css">
+<style>
+  .bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .bar-row .lbl { width: 110px; font-size: 13px; text-align: right; }
+  .bar-row .track { flex: 1; background: var(--kraft); border-radius: 4px; height: 22px; overflow: hidden; }
+  .bar-row .fill { height: 100%; background: var(--safety); border-radius: 4px; min-width: 2px; }
+  .bar-row .n { font-family: var(--font-mono); font-size: 13px; width: 32px; }
+  dialog { background: var(--paper); border: 1.5px solid var(--ink); border-radius: var(--radius); padding: 22px; width: min(92vw, 420px); }
+  dialog::backdrop { background: rgba(40,35,26,.5); }
+  .chk { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-bottom: 1px dashed var(--line); }
+  .chk:last-child { border-bottom: none; }
+  .chk .mark { width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--line); flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 13px; }
+  .chk.done .mark { background: var(--stamp); border-color: var(--stamp); color: #fff; }
+  .chk .ctitle { font-weight: 600; }
+  .chk.done .ctitle { color: var(--ink-soft); text-decoration: line-through; }
+  .chk .cbody { flex: 1; }
+  .chk .cbody .muted { margin: 2px 0 0; }
+  .copyfield { display: flex; gap: 6px; margin-top: 6px; }
+  .copyfield input { font-family: var(--font-mono); font-size: 13px; background: var(--carton); }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">Sahara <span class="tag">ADMIN</span></div>
+    <div class="who"><span id="who"></span><button onclick="logout()">Clock out</button></div>
+  </div>
+  <div class="wrap">
+    <div class="tabs">
+      <button class="active" onclick="show('stats',this)">Analytics</button>
+      <button onclick="show('users',this)">Users</button>
+      <button onclick="show('depots',this)">Depots</button>
+      <button onclick="show('settings',this)">Settings</button>
+    </div>
+
+    <section id="tab-stats">
+      <h1>Operations overview</h1>
+      <p class="sub">Live numbers across every depot and driver.</p>
+      <div class="card" id="setupCard" style="display:none;border-color:var(--safety);box-shadow:3px 3px 0 rgba(232,89,12,.2)">
+        <div class="spread">
+          <h2 style="margin:0">Getting started</h2>
+          <button class="btn small ghost" onclick="dismissSetup()" aria-label="Hide checklist">Hide</button>
+        </div>
+        <p class="muted" style="margin:4px 0 10px">A few things to do before players start ordering. This hides itself once you're set.</p>
+        <div id="setupSteps"></div>
+      </div>
+      <div class="grid cols-4" id="statCards"></div>
+      <div class="grid cols-2" style="margin-top:14px">
+        <div class="card">
+          <h2 style="margin-top:0">Jobs by status</h2>
+          <div id="statusBars"></div>
+        </div>
+        <div class="card">
+          <h2 style="margin-top:0">Top drivers</h2>
+          <table><thead><tr><th>Driver</th><th>Delivered</th></tr></thead><tbody id="topDrivers"></tbody></table>
+          <hr class="tear">
+          <h2 style="margin-top:0">Jobs per depot</h2>
+          <div id="depotBars"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-users" style="display:none">
+      <div class="spread" style="margin-bottom:14px">
+        <div><h1>Users</h1><p class="sub" style="margin:0">Drivers, warehouse staff and admins.</p></div>
+        <button class="btn primary" onclick="userDialog.showModal()">+ New user</button>
+      </div>
+      <div class="card" style="padding:0;overflow-x:auto">
+        <table><thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Depot</th><th>Status</th><th></th></tr></thead>
+        <tbody id="usersBody"></tbody></table>
+      </div>
+    </section>
+
+    <section id="tab-depots" style="display:none">
+      <div class="spread" style="margin-bottom:14px">
+        <div><h1>Depots</h1><p class="sub" style="margin:0">Warehouse locations in the game world.</p></div>
+        <button class="btn primary" onclick="depotDialog.showModal()">+ New depot</button>
+      </div>
+      <div class="grid cols-2" id="depotCards"></div>
+    </section>
+
+    <section id="tab-settings" style="display:none">
+      <h1>Settings</h1>
+      <p class="sub">Connect Discord. Paste a webhook URL and hit Send test — no files to edit.</p>
+      <div class="card">
+        <p class="muted" style="margin-bottom:4px">In Discord: <b>Server Settings → Integrations → Webhooks → New Webhook</b>, pick a channel, then <b>Copy Webhook URL</b> and paste it below.</p>
+        <hr class="tear">
+        <div id="settingsFields"></div>
+        <div class="row" style="margin-top:18px">
+          <button class="btn primary" onclick="saveSettings()">Save settings</button>
+          <span class="muted" id="saveMsg"></span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <dialog id="userDialog">
+    <h2 style="margin-top:0">New user</h2>
+    <form id="userForm">
+      <label>Display name</label><input id="uName" required>
+      <label>Username</label><input id="uUser" required autocomplete="off">
+      <label>Password</label><input id="uPass" type="text" required autocomplete="off">
+      <label>Role</label>
+      <select id="uRole"><option value="driver">Driver</option><option value="warehouse">Warehouse</option><option value="admin">Admin</option></select>
+      <label>Depot (warehouse staff only)</label><select id="uWh"><option value="">—</option></select>
+      <div class="row" style="margin-top:18px;justify-content:flex-end">
+        <button type="button" class="btn" onclick="userDialog.close()">Cancel</button>
+        <button type="submit" class="btn primary">Create user</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="depotDialog">
+    <h2 style="margin-top:0">New depot</h2>
+    <form id="depotForm">
+      <label>Code (3 letters)</label><input id="dCode" maxlength="4" required placeholder="e.g. EST">
+      <label>Name</label><input id="dName" required>
+      <label>Region</label><input id="dRegion">
+      <div class="row" style="margin-top:18px;justify-content:flex-end">
+        <button type="button" class="btn" onclick="depotDialog.close()">Cancel</button>
+        <button type="submit" class="btn primary">Create depot</button>
+      </div>
+    </form>
+  </dialog>
+
+<script src="/assets/app.js"></script>
+<script>
+  const me = requireRole('admin');
+  document.getElementById('who').textContent = me.name;
+  let warehouses = [];
+
+  function show(tab, btn) {
+    ['stats','users','depots','settings'].forEach(t => document.getElementById('tab-'+t).style.display = t === tab ? '' : 'none');
+    document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    if (tab === 'settings') loadSettings();
+  }
+
+  function bars(el, rows, max) {
+    el.innerHTML = rows.map(([lbl, n]) => `
+      <div class="bar-row">
+        <span class="lbl">${esc(lbl)}</span>
+        <div class="track"><div class="fill" style="width:${max ? Math.round(n / max * 100) : 0}%"></div></div>
+        <span class="n">${n}</span>
+      </div>`).join('') || '<p class="muted">No data yet</p>';
+  }
+
+  async function loadStats() {
+    const s = await API.get('/stats');
+    document.getElementById('statCards').innerHTML = [
+      [s.jobsToday, 'Jobs today'], [s.deliveredToday, 'Delivered today'],
+      [s.activeDrivers, 'Drivers on the road'], [s.openExceptions, 'Open exceptions'],
+    ].map(([n, lbl]) => `<div class="card statcard"><div class="big" ${lbl.includes('exception') && n > 0 ? 'style="color:var(--alert)"' : ''}>${n}</div><div class="label">${lbl}</div></div>`).join('');
+
+    const order = ['picking','packed','assigned','in_transit','delivered','exception'];
+    const rows = order.map(st => [STATUS_LABEL[st], s.byStatus[st] || 0]);
+    bars(document.getElementById('statusBars'), rows, Math.max(...rows.map(r => r[1]), 1));
+
+    document.getElementById('topDrivers').innerHTML =
+      s.topDrivers.map(d => `<tr><td>${esc(d.display_name)}</td><td class="mono">${d.delivered}</td></tr>`).join('')
+      || '<tr><td colspan="2" class="muted">No deliveries yet</td></tr>';
+
+    const dep = s.perWarehouse.map(w => [w.code, w.jobs]);
+    bars(document.getElementById('depotBars'), dep, Math.max(...dep.map(r => r[1]), 1));
+  }
+
+  async function loadUsers() {
+    const users = await API.get('/users');
+    document.getElementById('usersBody').innerHTML = users.map(u => `
+      <tr>
+        <td>${esc(u.display_name)}</td>
+        <td class="mono">${esc(u.username)}</td>
+        <td>${esc(u.role)}</td>
+        <td class="mono">${esc(u.warehouse_code || '—')}</td>
+        <td>${u.active ? '<span style="color:var(--stamp)">active</span>' : '<span class="muted">disabled</span>'}</td>
+        <td>
+          <button class="btn small" onclick="resetPassword(${u.id}, '${esc(u.display_name)}')">Set password</button>
+          ${u.id === me.id ? '' : `<button class="btn small" onclick="toggleUser(${u.id},${u.active ? 0 : 1})">${u.active ? 'Disable' : 'Enable'}</button>`}
+        </td>
+      </tr>`).join('');
+  }
+
+  async function resetPassword(id, name) {
+    const pass = prompt(`New password for ${name}:`);
+    if (pass === null) return;
+    if (pass.length < 6) return toast('Use at least 6 characters', true);
+    try { await API.patch('/users/' + id, { password: pass }); toast('Password updated'); }
+    catch (e) { toast(e.message, true); }
+  }
+
+  async function loadDepots() {
+    warehouses = await API.get('/warehouses');
+    document.getElementById('depotCards').innerHTML = warehouses.map(w => `
+      <div class="card">
+        <div class="spread"><h2 style="margin:0">${esc(w.name)}</h2><span class="ref">${esc(w.code)}</span></div>
+        <p class="muted">${esc(w.region || 'No region set')}</p>
+      </div>`).join('');
+    document.getElementById('uWh').innerHTML = '<option value="">—</option>' +
+      warehouses.map(w => `<option value="${w.id}">${esc(w.code)} — ${esc(w.name)}</option>`).join('');
+  }
+
+  async function toggleUser(id, active) {
+    try { await API.patch('/users/' + id, { active }); toast('Updated'); loadUsers(); checkSetup(); }
+    catch (e) { toast(e.message, true); }
+  }
+
+  document.getElementById('userForm').onsubmit = async (e) => {
+    e.preventDefault();
+    try {
+      await API.post('/users', {
+        display_name: uName.value, username: uUser.value, password: uPass.value,
+        role: uRole.value, warehouse_id: uWh.value ? +uWh.value : null,
+      });
+      userDialog.close(); e.target.reset();
+      toast('User created'); loadUsers();
+    } catch (ex) { toast(ex.message, true); }
+  };
+
+  document.getElementById('depotForm').onsubmit = async (e) => {
+    e.preventDefault();
+    try {
+      await API.post('/warehouses', { code: dCode.value, name: dName.value, region: dRegion.value });
+      depotDialog.close(); e.target.reset();
+      toast('Depot created'); loadDepots();
+    } catch (ex) { toast(ex.message, true); }
+  };
+
+  loadStats(); loadUsers(); loadDepots(); checkSetup();
+  setInterval(loadStats, 20000);
+
+  /* ---- Getting started checklist ---- */
+  const DEMO_USERS = ['ops1', 'ops2', 'driver1', 'driver2', 'driver3'];
+  function switchTo(tab) {
+    const btn = [...document.querySelectorAll('.tabs button')].find(b => b.textContent.trim().toLowerCase().startsWith(tab));
+    if (btn) btn.click();
+  }
+
+  async function checkSetup() {
+    if (localStorage.getItem('wb_setup_hidden') === '1') return;
+    let settings = {}, users = [];
+    try { [settings, users] = await Promise.all([API.get('/settings'), API.get('/users')]); }
+    catch { return; }
+
+    const discordOn = !!(settings.webhook_dispatch?.value || settings.webhook_customer?.value);
+    const publicSet = !!settings.public_url?.value;
+    const hasDemo = users.some(u => DEMO_USERS.includes(u.username) && u.active);
+    const origin = location.origin;
+
+    const steps = [
+      { done: discordOn, title: 'Connect Discord', body: 'Add at least your dispatch webhook so staff get notified.',
+        action: `<button class="btn small" onclick="switchTo('settings')">Open settings</button>` },
+      { done: publicSet, title: 'Set your public site URL', body: 'Lets customer pings include a clickable tracking link.',
+        action: `<button class="btn small" onclick="switchTo('settings')">Open settings</button>` },
+      { done: !hasDemo, title: 'Replace the demo team', body: hasDemo ? 'Demo drivers and ops staff are still active. Create your real accounts and disable these before going live.' : 'No demo accounts active.',
+        action: `<button class="btn small" onclick="switchTo('users')">Manage users</button>` },
+      { done: false, hideMark: true, title: 'Share your player links', body: 'Players use these to order and track — no login needed. Post them in Discord or in-game.',
+        action: `<div class="copyfield"><input readonly value="${origin}/order.html" onclick="this.select()"><button class="btn small" onclick="copyText('${origin}/order.html')">Copy</button></div>
+                 <div class="copyfield"><input readonly value="${origin}/track.html" onclick="this.select()"><button class="btn small" onclick="copyText('${origin}/track.html')">Copy</button></div>` },
+    ];
+
+    // Hide the whole card once the three real tasks are done.
+    const gating = steps.slice(0, 3);
+    if (gating.every(s => s.done)) { document.getElementById('setupCard').style.display = 'none'; return; }
+
+    document.getElementById('setupSteps').innerHTML = steps.map(s => `
+      <div class="chk ${s.done ? 'done' : ''}">
+        <div class="mark">${s.hideMark ? '→' : (s.done ? '✓' : '')}</div>
+        <div class="cbody">
+          <div class="ctitle">${s.title}</div>
+          <p class="muted">${s.body}</p>
+          ${s.done && !s.hideMark ? '' : s.action}
+        </div>
+      </div>`).join('');
+    document.getElementById('setupCard').style.display = 'block';
+  }
+
+  function dismissSetup() {
+    localStorage.setItem('wb_setup_hidden', '1');
+    document.getElementById('setupCard').style.display = 'none';
+  }
+
+  function copyText(t) {
+    navigator.clipboard?.writeText(t).then(() => toast('Copied'), () => toast(t));
+  }
+
+  /* ---- Settings ---- */
+  const SETTINGS_FIELDS = [
+    { key: 'webhook_dispatch', label: 'Staff dispatch channel', hint: 'New orders and every status change.', test: true },
+    { key: 'webhook_alerts', label: 'Exceptions / alerts channel', hint: 'Where delay flags go. Leave blank to reuse the dispatch channel.', test: true },
+    { key: 'webhook_customer', label: 'Customer updates channel', hint: 'Player-friendly order updates. Use a public channel.', test: true },
+    { key: 'public_url', label: 'Public site URL', hint: 'e.g. https://yourgame.onrender.com — used for tracking links in customer pings.', test: false },
+  ];
+
+  async function loadSettings() {
+    const s = await API.get('/settings');
+    document.getElementById('settingsFields').innerHTML = SETTINGS_FIELDS.map(f => {
+      const cur = s[f.key] || { value: '', envLocked: false };
+      const locked = cur.envLocked;
+      return `<label>${f.label}${locked ? ' <span class="muted" style="text-transform:none;letter-spacing:0">(set by environment variable — edit there)</span>' : ''}</label>
+        <div class="row" style="align-items:stretch">
+          <input id="set_${f.key}" value="${esc(cur.value)}" placeholder="${f.key === 'public_url' ? 'https://...' : 'https://discord.com/api/webhooks/...'}" ${locked ? 'disabled' : ''} style="flex:1">
+          ${f.test ? `<button class="btn small" type="button" onclick="testHook('${f.key}')" ${locked ? 'disabled' : ''}>Send test</button>` : ''}
+        </div>
+        <p class="muted" style="margin:4px 0 0">${f.hint}</p>`;
+    }).join('');
+  }
+
+  async function saveSettings() {
+    const payload = {};
+    SETTINGS_FIELDS.forEach(f => { const el = document.getElementById('set_' + f.key); if (el && !el.disabled) payload[f.key] = el.value; });
+    try {
+      await API.req('PUT', '/settings', payload);
+      const msg = document.getElementById('saveMsg');
+      msg.textContent = 'Saved — changes are live immediately.';
+      setTimeout(() => msg.textContent = '', 3000);
+      toast('Settings saved');
+      checkSetup();
+    } catch (e) { toast(e.message, true); }
+  }
+
+  async function testHook(key) {
+    const url = document.getElementById('set_' + key).value.trim();
+    if (!url) return toast('Paste a webhook URL first', true);
+    try { await API.post('/settings/test', { url }); toast('Test sent — check your Discord channel ✅'); }
+    catch (e) { toast(e.message, true); }
+  }
+</script>
+</body>
+</html>

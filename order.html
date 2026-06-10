@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Place an order — Sahara Delivery</title>
+<link rel="stylesheet" href="/assets/base.css">
+<style>
+  body { background: var(--carton);
+    background-image: repeating-linear-gradient(45deg, transparent, transparent 34px, rgba(40,35,26,.025) 34px, rgba(40,35,26,.025) 36px); }
+  .wrap { max-width: 520px; }
+  .hero { text-align: center; padding: 28px 0 8px; }
+  .hero .logo { font-family: var(--font-display); font-size: 30px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; }
+  .hero .logo small { display: block; font-family: var(--font-mono); font-size: 11px; letter-spacing: 2px; color: var(--safety); margin-top: 2px; }
+  .err-box { background: #fde8e8; border: 1.5px solid var(--alert); color: var(--alert); border-radius: var(--radius); padding: 9px 12px; font-size: 13px; margin-top: 14px; display: none; }
+  .barcode { margin-top: 18px; height: 26px; background: repeating-linear-gradient(90deg, var(--ink) 0 2px, transparent 2px 5px, var(--ink) 5px 6px, transparent 6px 10px); opacity: .55; }
+  /* Confirmation */
+  #done { display: none; text-align: center; }
+  #done .check { font-size: 44px; }
+  .codebox { font-family: var(--font-mono); font-size: 26px; font-weight: 500; letter-spacing: 2px; background: var(--kraft); border: 2px dashed var(--ink); border-radius: var(--radius); padding: 14px; margin: 12px 0; user-select: all; }
+  .links { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 6px; }
+  .hint { font-size: 13px; color: var(--ink-soft); }
+  .charcount { float: right; font-size: 11px; color: var(--ink-soft); font-weight: 400; letter-spacing: 0; text-transform: none; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <div class="logo">Sahara<small>PLACE AN ORDER</small></div>
+    </div>
+
+    <div class="card" id="formCard">
+      <p class="hint" style="margin-bottom:6px">Tell us what you need and where it's going. You'll get a tracking code the moment you submit — order anything, just describe it in the items box.</p>
+      <hr class="tear">
+      <form id="orderForm">
+        <label for="customer">Your name</label>
+        <input id="customer" maxlength="40" required autocomplete="off" placeholder="e.g. PlayerOne">
+
+        <label for="depot">Nearest depot</label>
+        <select id="depot" required></select>
+
+        <label for="destination">Deliver to</label>
+        <input id="destination" maxlength="100" required autocomplete="off" placeholder="e.g. Sandy Shores garage">
+
+        <label for="items">What do you need? <span class="charcount" id="itemCount">0 / 600</span></label>
+        <textarea id="items" rows="4" maxlength="600" required placeholder="List anything — e.g. 3x engine parts, 1x toolkit, 2 crates of supplies..."></textarea>
+
+        <div class="err-box" id="err"></div>
+        <button class="btn primary" style="width:100%;margin-top:18px" type="submit" id="submitBtn">Place order</button>
+      </form>
+      <div class="barcode" aria-hidden="true"></div>
+    </div>
+
+    <div class="card" id="done">
+      <div class="check">📦</div>
+      <h2 style="margin:4px 0">Order placed!</h2>
+      <p class="hint">Keep this code — it's how you track your order.</p>
+      <div class="codebox" id="doneCode"></div>
+      <p class="hint" id="doneDest"></p>
+      <div class="links">
+        <a class="btn primary" id="trackLink">Track this order</a>
+        <button class="btn" onclick="reset()">Place another</button>
+      </div>
+      <div class="barcode" aria-hidden="true"></div>
+    </div>
+  </div>
+
+<script src="/assets/app.js"></script>
+<script>
+  const items = document.getElementById('items');
+  const itemCount = document.getElementById('itemCount');
+  items.addEventListener('input', () => { itemCount.textContent = `${items.value.length} / 600`; });
+
+  async function loadDepots() {
+    try {
+      const depots = await fetch('/api/public/depots').then(r => r.json());
+      document.getElementById('depot').innerHTML = depots.length
+        ? depots.map(d => `<option value="${d.id}">${esc(d.code)} — ${esc(d.name)}${d.region ? ' (' + esc(d.region) + ')' : ''}</option>`).join('')
+        : '<option disabled>No depots available</option>';
+    } catch { document.getElementById('depot').innerHTML = '<option disabled>Could not load depots</option>'; }
+  }
+
+  document.getElementById('orderForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const err = document.getElementById('err');
+    const btn = document.getElementById('submitBtn');
+    err.style.display = 'none';
+    btn.disabled = true; btn.textContent = 'Placing...';
+    try {
+      const res = await fetch('/api/order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customer: document.getElementById('customer').value,
+          destination: document.getElementById('destination').value,
+          items: items.value,
+          warehouse_id: +document.getElementById('depot').value,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Something went wrong');
+      showDone(data);
+    } catch (ex) {
+      err.textContent = ex.message;
+      err.style.display = 'block';
+    } finally {
+      btn.disabled = false; btn.textContent = 'Place order';
+    }
+  };
+
+  function showDone(data) {
+    document.getElementById('doneCode').textContent = data.ref;
+    document.getElementById('doneDest').textContent = 'Heading to ' + data.destination;
+    document.getElementById('trackLink').href = '/track.html?ref=' + encodeURIComponent(data.ref);
+    document.getElementById('formCard').style.display = 'none';
+    document.getElementById('done').style.display = 'block';
+    window.scrollTo(0, 0);
+  }
+
+  function reset() {
+    document.getElementById('orderForm').reset();
+    itemCount.textContent = '0 / 600';
+    document.getElementById('done').style.display = 'none';
+    document.getElementById('formCard').style.display = 'block';
+  }
+
+  loadDepots();
+</script>
+</body>
+</html>
