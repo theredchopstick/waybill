@@ -1,0 +1,34 @@
+# One-click deploy on Render.
+#
+# 1. Push this repo to GitHub.
+# 2. On render.com: New → Blueprint → connect the repo → Apply.
+# 3. When it's live, open the URL and check the deploy logs for your
+#    first admin password (printed on first boot).
+#
+# As written, this uses the FREE plan. Note: free web services have an
+# ephemeral filesystem, so the SQLite database RESETS on restart/redeploy
+# and after the service sleeps. Fine for testing.
+#
+# To keep orders and accounts permanently, switch to a paid plan with a
+# persistent disk: change `plan: free` to `plan: starter` and uncomment
+# the `disk:` block at the bottom. (~$7/mo + $0.25/GB/mo.)
+services:
+  - type: web
+    name: waybill
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/public/depots
+    envVars:
+      # Persisted login secret so sessions survive restarts.
+      - key: JWT_SECRET
+        generateValue: true
+      # Only used when a persistent disk is attached (paid plan).
+      - key: DB_PATH
+        value: /data/waybill.db
+    # --- Uncomment for permanent storage (requires plan: starter or higher) ---
+    # disk:
+    #   name: waybill-data
+    #   mountPath: /data
+    #   sizeGB: 1
